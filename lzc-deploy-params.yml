@@ -4,7 +4,6 @@ params:
     name: "Main Port"
     description: "Main HTTP service port (default 6060)"
     default_value: "6060"
-    optional: true
 
   - id: preview_frontend_port
     type: string
