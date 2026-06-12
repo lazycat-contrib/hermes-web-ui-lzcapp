@@ -12,7 +12,8 @@ application:
 
 services:
   hermes-webui:
-    image: docker.1ms.run/ekkoye8888/hermes-web-ui:v0.6.14
+    #  ekkoye8888/hermes-web-ui:v0.6.14
+    image: registry.lazycat.cloud/czyt/ekkoye8888/hermes-web-ui:b476fb4cbd119a38
     environment:
       - PORT={{ .U.port }}
       - HERMES_HOME=/home/agent/.hermes
