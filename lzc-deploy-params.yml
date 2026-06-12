@@ -1,0 +1,43 @@
+params:
+  - id: port
+    type: string
+    name: "Main Port"
+    description: "Main HTTP service port (default 6060)"
+    default_value: "6060"
+    optional: true
+
+  - id: preview_frontend_port
+    type: string
+    name: "Preview Frontend Port"
+    description: "Preview frontend service port (default 8651)"
+    default_value: "8651"
+    optional: true
+
+  - id: xai_oauth_port
+    type: string
+    name: "XAI OAuth Port"
+    description: "XAI OAuth callback service port (default 56121)"
+    default_value: "56121"
+    optional: true
+
+locales:
+  zh:
+    port:
+      name: "主端口"
+      description: "主 HTTP 服务端口（默认 6060）"
+    preview_frontend_port:
+      name: "预览前端端口"
+      description: "预览前端服务端口（默认 8651）"
+    xai_oauth_port:
+      name: "XAI OAuth 端口"
+      description: "XAI OAuth 回调服务端口（默认 56121）"
+  en:
+    port:
+      name: "Main Port"
+      description: "Main HTTP service port (default 6060)"
+    preview_frontend_port:
+      name: "Preview Frontend Port"
+      description: "Preview frontend service port (default 8651)"
+    xai_oauth_port:
+      name: "XAI OAuth Port"
+      description: "XAI OAuth callback service port (default 56121)"

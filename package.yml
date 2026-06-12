@@ -1,0 +1,19 @@
+package: community.lazycat.app.hermes
+version: 0.6.14
+name: Hermes
+description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
+min_os_version: 1.5.0
+author: ekkoye8888
+homepage: https://github.com/ekkoye8888/hermes-web-ui
+
+locales:
+  zh:
+    name: "Hermes"
+    description: "Hermes AI 智能体 Web 管理界面"
+  en:
+    name: "Hermes"
+    description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
+
+permissions:
+  required:
+    - net.internet
