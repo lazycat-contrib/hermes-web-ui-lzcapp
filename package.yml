@@ -1,4 +1,4 @@
-package: community.lazycat.app.hermes
+package: community.lazycat.app.hermes-studio
 version: 0.6.15
 name: Hermes
 description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
@@ -8,10 +8,10 @@ homepage: https://github.com/EKKOLearnAI/hermes-studio
 
 locales:
   zh:
-    name: "Hermes"
+    name: "Hermes Studio"
     description: "Hermes AI 智能体 Web 管理界面"
   en:
-    name: "Hermes"
+    name: "Hermes Studio"
     description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
 
 permissions:

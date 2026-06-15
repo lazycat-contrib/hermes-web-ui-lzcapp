@@ -1,5 +1,5 @@
 application:
-  subdomain: hermes
+  subdomain: hermes-studio
   upstreams:
     - location: /
       backend: http://hermes-webui:{{ .U.port }}/
