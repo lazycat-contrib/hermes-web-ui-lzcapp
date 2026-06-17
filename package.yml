@@ -1,10 +1,14 @@
 package: community.lazycat.app.hermes-studio
-version: 0.6.15
+version: 0.6.16
 name: Hermes
 description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
-min_os_version: 1.5.0
+min_os_version: 1.5.2
 author: EKKOLearnAI
 homepage: https://github.com/EKKOLearnAI/hermes-studio
+
+import_resources:
+  - kind: skills
+  - kind: mcp-providers
 
 locales:
   zh:
@@ -17,3 +21,4 @@ locales:
 permissions:
   required:
     - net.internet
+    - lzcapp.user_delegate
