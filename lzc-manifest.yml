@@ -16,8 +16,8 @@ application:
 
 services:
   hermes-webui:
-    #  ekkoye8888/hermes-web-ui:v0.6.16
-    image: registry.lazycat.cloud/czyt/ekkoye8888/hermes-web-ui:f2e9a7c39768f8d3
+    #  ekkoye8888/hermes-web-ui:v0.6.17
+    image: registry.lazycat.cloud/czyt/ekkoye8888/hermes-web-ui:1e820d38b8e15786
     environment:
       - PORT={{ .U.port }}
       - HERMES_HOME=/home/agent/.hermes
@@ -27,5 +27,79 @@ services:
       - PATH=/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
     binds:
-      - /lzcapp/var/hermes:/home/agent/.hermes
-      - /lzcapp/var/hermes-web-ui:/home/agent/.hermes-web-ui
+      - /lzcapp/var/home:/home/agent
+      - /lzcapp/var/cache:/lzcapp/cache
+
+    setup_script: |
+      #!/bin/sh
+      # Totoro-style rootfs persistence: base snapshot + user upper layer
+      # base/ = image content snapshot (replaced on image update)
+      # upper/ = user changes only (always preserved across updates)
+      # /home and /lzcapp/cache excluded - already persistent via bind mounts
+
+      ROOTFS=/lzcapp/cache/rootfs
+      BASE=$ROOTFS/base
+      UPPER=$ROOTFS/upper
+      DIRS="etc opt root srv usr var"
+
+      # --- Image fingerprint: overlay lowerdir (works for latest tag too) ---
+      CURRENT_ID=$(awk '/ \/ rw.*overlay/' /proc/1/mountinfo | md5sum | cut -d' ' -f1)
+      STORED_ID=$(cat "$ROOTFS/.image-id" 2>/dev/null)
+
+      # --- First boot or image update: snapshot base ---
+      NEED_SNAPSHOT=0
+      if [ ! -f "$ROOTFS/.image-id" ]; then
+        echo "[setup] first boot: creating base snapshot..."
+        NEED_SNAPSHOT=1
+      elif [ "$CURRENT_ID" != "$STORED_ID" ]; then
+        echo "[setup] image update detected ($STORED_ID -> $CURRENT_ID)"
+        echo "[setup] re-snapshotting base (user packages preserved in upper)..."
+        NEED_SNAPSHOT=1
+      fi
+
+      if [ "$NEED_SNAPSHOT" = "1" ]; then
+        mkdir -p "$BASE"
+        for d in $DIRS; do
+          if [ -d "/$d" ] && ! [ -L "/$d" ]; then
+            rm -rf "$BASE/$d"
+            mkdir -p "$BASE/$d"
+            tar -C "/$d" -cf - . | tar -C "$BASE/$d" -xf -
+          fi
+        done
+
+        # Sync container-generated files (Docker writes each boot)
+        for f in resolv.conf hostname hosts; do
+          [ -f "/etc/$f" ] && cp -f "/etc/$f" "$BASE/etc/$f" 2>/dev/null
+        done
+
+        echo "$CURRENT_ID" > "$ROOTFS/.image-id"
+        echo "[setup] base snapshot done"
+      fi
+
+      # --- Overlay mount: base(lower) + user-changes(upper) ---
+      n=0
+      for d in $DIRS; do
+        [ -d "$BASE/$d" ] || continue
+        [ -d "/$d" ] || continue
+
+        # Skip if already mounted (container restart scenario)
+        mountpoint -q "/$d" 2>/dev/null && continue
+
+        mkdir -p "$UPPER/$d"
+        rm -rf "$ROOTFS/work/$d" && mkdir -p "$ROOTFS/work/$d"
+        if mount -t overlay overlay \
+          -o "lowerdir=$BASE/$d,upperdir=$UPPER/$d,workdir=$ROOTFS/work/$d" \
+          "/$d"; then
+          n=$((n+1))
+        else
+          echo "[setup] WARN: overlay mount failed for /$d" >&2
+        fi
+      done
+      echo "[setup] rootfs: $n dirs overlay (base lower + user upper)"
+
+      # --- Bash history: persist via bind-mounted /home/agent ---
+      BASHRC=/home/agent/.bashrc
+      if ! grep -q "history -a" "$BASHRC" 2>/dev/null; then
+        printf '\n# History: write after each command (survives container kill)\nexport HISTFILE=~/.bash_history\nexport HISTSIZE=10000\nexport HISTFILESIZE=20000\nexport PROMPT_COMMAND="history -a; $PROMPT_COMMAND"\n' >> "$BASHRC"
+        echo "[setup] bash history config added to .bashrc"
+      fi
