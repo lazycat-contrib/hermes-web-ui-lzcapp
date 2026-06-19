@@ -24,7 +24,7 @@ services:
       - HERMES_BIN=/opt/hermes/.venv/bin/hermes
       - HERMES_WEB_UI_MANAGED_GATEWAY=1
       - HERMES_WEB_UI_XAI_CALLBACK_BIND_HOST=0.0.0.0
-      - PATH=/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PATH=/home/agent/.local/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
     binds:
       - /lzcapp/var/home:/home/agent
@@ -32,74 +32,124 @@ services:
 
     setup_script: |
       #!/bin/sh
-      # Totoro-style rootfs persistence: base snapshot + user upper layer
-      # base/ = image content snapshot (replaced on image update)
-      # upper/ = user changes only (always preserved across updates)
-      # /home and /lzcapp/cache excluded - already persistent via bind mounts
+      set -u
+      umask 022
+
+      log() {
+        echo "[setup] $*"
+      }
+
+      die() {
+        echo "[setup] ERROR: $*" >&2
+        exit 1
+      }
 
       ROOTFS=/lzcapp/cache/rootfs
       BASE=$ROOTFS/base
       UPPER=$ROOTFS/upper
+      WORK=$ROOTFS/work
       DIRS="etc opt root srv usr var"
 
-      # --- Image fingerprint: overlay lowerdir (works for latest tag too) ---
-      CURRENT_ID=$(awk '/ \/ rw.*overlay/' /proc/1/mountinfo | md5sum | cut -d' ' -f1)
+      is_mounted() {
+        mountpoint -q "$1" 2>/dev/null && return 0
+        awk -v path="$1" '$2 == path { found = 1 } END { exit found ? 0 : 1 }' /proc/mounts
+      }
+
+      safe_rm_dir() {
+        target="$1"
+        case "$target" in
+          "$ROOTFS"/base.new.*|"$ROOTFS"/base.old.*|"$WORK"/*)
+            rm -rf "$target"
+            ;;
+          *)
+            die "refusing to remove unexpected path: $target"
+            ;;
+        esac
+      }
+
+      mkdir -p "$ROOTFS" "$UPPER" "$WORK" /home/agent/.local/bin /home/agent/.hermes /home/agent/.hermes-web-ui
+
+      # Image fingerprint: use the root overlay mount so latest-tag updates are detected.
+      ROOT_MOUNT=$(awk '$5 == "/" && $0 ~ / - overlay / { print; exit }' /proc/1/mountinfo)
+      [ -n "$ROOT_MOUNT" ] || die "cannot find root overlay mount in /proc/1/mountinfo"
+      CURRENT_ID=$(printf '%s' "$ROOT_MOUNT" | md5sum | cut -d' ' -f1)
       STORED_ID=$(cat "$ROOTFS/.image-id" 2>/dev/null)
 
-      # --- First boot or image update: snapshot base ---
       NEED_SNAPSHOT=0
       if [ ! -f "$ROOTFS/.image-id" ]; then
-        echo "[setup] first boot: creating base snapshot..."
+        log "first boot: creating base snapshot"
         NEED_SNAPSHOT=1
       elif [ "$CURRENT_ID" != "$STORED_ID" ]; then
-        echo "[setup] image update detected ($STORED_ID -> $CURRENT_ID)"
-        echo "[setup] re-snapshotting base (user packages preserved in upper)..."
+        log "image update detected ($STORED_ID -> $CURRENT_ID)"
+        log "refreshing base snapshot; user changes stay in upper"
         NEED_SNAPSHOT=1
       fi
 
       if [ "$NEED_SNAPSHOT" = "1" ]; then
-        mkdir -p "$BASE"
+        NEW_BASE=$ROOTFS/base.new.$$
+        OLD_BASE=$ROOTFS/base.old.$$
+
+        safe_rm_dir "$NEW_BASE"
+        safe_rm_dir "$OLD_BASE"
+        mkdir -p "$NEW_BASE"
+
         for d in $DIRS; do
           if [ -d "/$d" ] && ! [ -L "/$d" ]; then
-            rm -rf "$BASE/$d"
-            mkdir -p "$BASE/$d"
-            tar -C "/$d" -cf - . | tar -C "$BASE/$d" -xf -
+            mkdir -p "$NEW_BASE/$d"
+            tar -C "/$d" -cf - . | tar -C "$NEW_BASE/$d" -xf - || die "snapshot failed for /$d"
           fi
         done
 
-        # Sync container-generated files (Docker writes each boot)
+        for f in resolv.conf hostname hosts; do
+          [ -f "/etc/$f" ] && cp -f "/etc/$f" "$NEW_BASE/etc/$f" 2>/dev/null
+        done
+
+        [ -d "$BASE" ] && mv "$BASE" "$OLD_BASE"
+        mv "$NEW_BASE" "$BASE" || die "failed to activate base snapshot"
+        echo "$CURRENT_ID" > "$ROOTFS/.image-id"
+        safe_rm_dir "$OLD_BASE"
+        log "base snapshot ready"
+      elif [ -d "$BASE/etc" ] && ! is_mounted /etc; then
+        # Docker rewrites these files for each container boot. Keep the lowerdir current
+        # before /etc is mounted over it.
         for f in resolv.conf hostname hosts; do
           [ -f "/etc/$f" ] && cp -f "/etc/$f" "$BASE/etc/$f" 2>/dev/null
         done
-
-        echo "$CURRENT_ID" > "$ROOTFS/.image-id"
-        echo "[setup] base snapshot done"
       fi
 
-      # --- Overlay mount: base(lower) + user-changes(upper) ---
+      [ -d "$BASE" ] || die "base snapshot is missing"
+
       n=0
+      failed=0
       for d in $DIRS; do
         [ -d "$BASE/$d" ] || continue
         [ -d "/$d" ] || continue
 
-        # Skip if already mounted (container restart scenario)
-        mountpoint -q "/$d" 2>/dev/null && continue
+        if is_mounted "/$d"; then
+          log "/$d already mounted; skipping"
+          continue
+        fi
 
         mkdir -p "$UPPER/$d"
-        rm -rf "$ROOTFS/work/$d" && mkdir -p "$ROOTFS/work/$d"
+        safe_rm_dir "$WORK/$d"
+        mkdir -p "$WORK/$d"
+
         if mount -t overlay overlay \
-          -o "lowerdir=$BASE/$d,upperdir=$UPPER/$d,workdir=$ROOTFS/work/$d" \
+          -o "lowerdir=$BASE/$d,upperdir=$UPPER/$d,workdir=$WORK/$d" \
           "/$d"; then
           n=$((n+1))
         else
-          echo "[setup] WARN: overlay mount failed for /$d" >&2
+          echo "[setup] ERROR: overlay mount failed for /$d" >&2
+          failed=1
         fi
       done
-      echo "[setup] rootfs: $n dirs overlay (base lower + user upper)"
+
+      [ "$failed" = "0" ] || die "rootfs persistence is not active"
+      log "rootfs: $n dirs overlay (base lower + user upper)"
 
       # --- Bash history: persist via bind-mounted /home/agent ---
       BASHRC=/home/agent/.bashrc
       if ! grep -q "history -a" "$BASHRC" 2>/dev/null; then
         printf '\n# History: write after each command (survives container kill)\nexport HISTFILE=~/.bash_history\nexport HISTSIZE=10000\nexport HISTFILESIZE=20000\nexport PROMPT_COMMAND="history -a; $PROMPT_COMMAND"\n' >> "$BASHRC"
-        echo "[setup] bash history config added to .bashrc"
+        log "bash history config added to .bashrc"
       fi

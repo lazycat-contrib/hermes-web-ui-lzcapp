@@ -5,6 +5,7 @@ icon: ./icon.png
 compose_override:
   services:
     hermes-webui:
+      privileged: true
       cap_add:
         - SYS_ADMIN
       devices:
