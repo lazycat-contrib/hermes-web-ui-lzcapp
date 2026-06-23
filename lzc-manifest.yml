@@ -17,7 +17,7 @@ application:
 services:
   hermes-webui:
     #  ekkoye8888/hermes-web-ui:v0.6.17
-    image: registry.lazycat.cloud/czyt/ekkoye8888/hermes-web-ui:3d72b81ce95fab49
+    image: registry.lazycat.cloud/czyt/ekkoye8888/hermes-web-ui:99c32281a4c996da
     environment:
       - PORT={{ .U.port }}
       - HERMES_HOME=/home/agent/.hermes

@@ -1,5 +1,5 @@
 package: community.lazycat.app.hermes-studio
-version: 0.6.18
+version: 0.6.19
 name: Hermes
 description: "Hermes AI Agent Web UI - a web-based interface for managing Hermes AI agents"
 min_os_version: 1.5.2
