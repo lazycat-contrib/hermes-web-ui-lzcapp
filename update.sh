@@ -142,7 +142,7 @@ awk -v new_comment="#  ${SOURCE_IMAGE}" -v new_image="$LAZYCAT_IMAGE" '
 mv "$tmp_mnf" "$MANIFEST_FILE"
 
 # ── 构建 LPK ──────────────────────────────────────────────
-LPK_FILE="community.lazycat.app.hermes-studio-v${VERSION}.lpk"
+LPK_FILE="community.lazycat.app.hermes-studio-${VERSION}.lpk"
 
 build_lpk() {
   if command -v fish >/dev/null 2>&1 && fish -lc 'functions -q lzc-release' 2>/dev/null; then
